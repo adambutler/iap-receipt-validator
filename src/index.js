@@ -1,28 +1,39 @@
-const productionHost = 'buy.itunes.apple.com';
-const sandboxHost = 'sandbox.itunes.apple.com';
-
-const statusCodes = {
-  [0]:     { message:'Active', valid: true, error: false },
-  [21000]: { message:'App store could not read', valid: false, error: true },
-  [21002]: { message:'Data was malformed', valid: false, error: true },
-  [21003]: { message:'Receipt not authenticated', valid: false, error: true },
-  [21004]: { message:'Shared secret does not match', valid: false, error: true },
-  [21005]: { message:'Receipt server unavailable', valid: false, error: true },
-  [21006]: { message:'Receipt valid but sub expired', valid: false, error: false },
-  [21007]: { message:'Sandbox receipt sent to Production environment', valid: false, error: true, redirect: true }, // special case for app review handling - forward any request that is intended for the Sandbox but was sent to Production, this is what the app review team does
-  [21008]: { message:'Production receipt sent to Sandbox environment', valid: false, error: true },
+function errorStatusCodes(statusCode) {
+  switch (statusCode) {
+    case 21000:
+      return { status: 21000, message: "The App Store could not read the JSON object you provided." }
+      break;
+    case 21002:
+      return { status: 21002, message: "The data in the receipt-data property was malformed or missing." }
+      break;
+    case 21003:
+      return { status: 21003, message: "The receipt could not be authenticated." }
+      break;
+    case 21004:
+      return { status: 21004, message: "The shared secret you provided does not match the shared secret on file for your account." }
+      break;
+    case 21005:
+      return { status: 21005, message: "The receipt server is not currently available." }
+      break;
+    case 21006:
+      return { status: 21006, message: "This receipt is valid but the subscription has expired. When this status code is returned to your server, the receipt data is also decoded and returned as part of the response." }
+      break;
+    case 21007:
+      return { status: 21007, message: "This receipt is from the test environment, but it was sent to the production environment for verification. Send it to the test environment instead." }
+      break;
+    case 21008:
+      return { status: 21008, message: "This receipt is from the production environment, but it was sent to the test environment for verification. Send it to the production environment instead." }
+      break;
+    case default:
+      return { status: -1, message: "Unknown error" };
+  }
 };
 
-function VerificationError(error) {
-  ['message', 'valid', 'error', 'redirect'].map(prop => this[prop] = error[prop]);
-}
-VerificationError.prototype = Object.create(Error.prototype);
+export default function(password, production = true) {
+  const endpoint = production ? 'buy.itunes.apple.com' : 'sandbox.itunes.apple.com';
+  const url = `https://${endpoint}/verifyReceipt`;
 
-export default function(password, production=true) {
-  const endpoint = production ? productionHost : sandboxHost;
-  const verifyUrl = `https://${endpoint}/verifyReceipt`;
-
-  return async (receipt) => {
+  return (receipt, callback) => {
     const payload = {
       'receipt-data': receipt,
       password,
@@ -32,18 +43,17 @@ export default function(password, production=true) {
       body: JSON.stringify(payload),
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
     };
 
-    const res = await fetch(verifyUrl, options);
-    const body = await res.json();
-
-    if (body.status !== 0) {
-      throw new VerificationError(statusCodes[body.status]);
-    }
-
-    return receipt;
+    fetch(url, options)
+      .then((response) =>
+        var error;
+        if(response.status !== 0) {
+          error = errorStatusCodes(response.status);
+        }
+        callback(error, response.json());
   }
 }
 
